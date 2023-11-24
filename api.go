@@ -27,9 +27,12 @@ func NewAPIServer(listenAddr string, store Storage) *APIServer {
 
 func (s *APIServer) Run() { // use github.com/gorilla/mux (id say its a stable package, so we'll use it)
 	router := mux.NewRouter()
+
+	router.HandleFunc("/login", makeHTTPHandleFunc(s.handleLogin))
+
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
 
-	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandleFunc(s.handleGetAccountByID))) // wrap this with withJWTAuth to protect this
+	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandleFunc(s.handleGetAccountByID), s.store)) // wrap this with withJWTAuth to protect this
 	router.HandleFunc("/transfer", makeHTTPHandleFunc(s.handleTransfer))
 
 	log.Printf("JSON API server running on%s", s.listenAddr)
@@ -37,6 +40,38 @@ func (s *APIServer) Run() { // use github.com/gorilla/mux (id say its a stable p
 }
 
 // handling
+// 4993187
+func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != "POST" {
+		return fmt.Errorf("method not allowed: %s", r.Method)
+	}
+
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return err
+	}
+
+	acc, err := s.store.GetAccountByNumber(int(req.Number))
+	if err != nil {
+		return err
+	}
+
+	if !acc.ValidPassword(req.Password) {
+		return fmt.Errorf("login failed")
+	}
+
+	token, err := createJWT(acc)
+	if err != nil {
+		return err
+	}
+
+	res := LoginResponse{
+		Token:  token,
+		Number: acc.Number,
+	}
+
+	return WriteJSON(w, http.StatusOK, res)
+}
 
 // convert function to http handler to avoid clash with mux handleFunc
 func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error {
@@ -62,7 +97,7 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 
 func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error {
 	if r.Method == "GET" {
-		id, err := getId(r)
+		id, err := getID(r)
 		if err != nil {
 			return err
 		}
@@ -89,23 +124,20 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 	if err := json.NewDecoder(r.Body).Decode(createAccountReq); err != nil {
 		return err
 	}
-	account := NewAccount(createAccountReq.FirstName, createAccountReq.LastName) // can also do Account{}
-	if err := s.store.CreateAccount(account); err != nil {
-		return err
-	}
-
-	tokenString, err := createJWT(account)
+	account, err := NewAccount(createAccountReq.FirstName, createAccountReq.LastName, createAccountReq.Password) // can also do Account{}
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("JWT Token: ", tokenString)
+	if err := s.store.CreateAccount(account); err != nil {
+		return err
+	}
 
 	return WriteJSON(w, http.StatusOK, account)
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
-	id, err := getId(r)
+	id, err := getID(r)
 	if err != nil {
 		return err
 	}
@@ -151,18 +183,52 @@ func createJWT(account *Account) (string, error) {
 
 }
 
-func withJWTAuth(handlerFunc http.HandlerFunc) http.HandlerFunc {
+func permissionDenied(w http.ResponseWriter) {
+	WriteJSON(w, http.StatusForbidden, APIError{Error: "permission denied"})
+}
+
+func withJWTAuth(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Calling JWT auth middleware")
 
 		tokenString := r.Header.Get("x-jwt-token")
 
-		_, err := validateJWT(tokenString)
+		token, err := validateJWT(tokenString)
+
+		if err != nil {
+			permissionDenied(w)
+			return
+		}
+
+		if !token.Valid {
+			permissionDenied(w)
+			return
+		}
+
+		userID, err := getID(r)
+		if err != nil {
+			permissionDenied(w)
+			return
+		}
+
+		account, err := s.GetAccountByID(userID)
+		if err != nil {
+			permissionDenied(w)
+			return
+		}
+
+		claims := token.Claims.(jwt.MapClaims)
+		if account.Number != int64(claims["accountNumber"].(float64)) { // account.Number is int64 and claims["accountNumber"] is float64
+			permissionDenied(w)
+			return
+		}
+
 		if err != nil {
 			WriteJSON(w, http.StatusForbidden, APIError{Error: "invalid token"})
 			return
 		}
+
 		handlerFunc(w, r)
 	}
 }
@@ -195,7 +261,7 @@ func makeHTTPHandleFunc(f APIFunc) http.HandlerFunc { // decorate API func and t
 	}
 }
 
-func getId(r *http.Request) (int, error) {
+func getID(r *http.Request) (int, error) {
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
