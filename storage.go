@@ -9,6 +9,7 @@ import (
 
 // docker run --name bank-pg -e POSTGRES_PASSWORD=bankappgo -p 5432:5432 -d postgres
 // docker stop bank-pg
+// docker remove bank-pg
 
 type Storage interface {
 	CreateAccount(*Account) error

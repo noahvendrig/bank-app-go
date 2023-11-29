@@ -170,6 +170,12 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	return json.NewEncoder(w).Encode(v)
 }
 
+// Windows
+// 		SET JWT_SECRET=noah1111
+
+// Linux
+// 		export JWT_SECRET=noah1111
+
 func createJWT(account *Account) (string, error) {
 	claims := &jwt.MapClaims{
 		"expiresAt":     jwt.NewNumericDate(time.Unix(1516239022, 0)),
