@@ -18,7 +18,7 @@ type LoginRequest struct {
 }
 
 type TransferRequest struct {
-	ToAccount int `json:"toAccount"`
+	ToAccount int `json:"toAccount"` // id to send $ to
 	Amount    int `json:"amount"`
 }
 

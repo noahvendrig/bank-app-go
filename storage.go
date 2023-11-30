@@ -66,10 +66,11 @@ func (s PostgresStore) CreateAccountTable() error {
 
 func (s *PostgresStore) CreateAccount(acc *Account) error {
 	query := `
-	INSERT INTO ACCOUNT 
-	(first_name, last_name, number, encrypted_password, balance, created_at)
-	VALUES
-	($1, $2, $3, $4, $5, $6)` // $N is index of arguments passed to db.Exec() - prevent hardcoding values in SQL)
+		INSERT INTO ACCOUNT 
+		(first_name, last_name, number, encrypted_password, balance, created_at)
+		VALUES
+		($1, $2, $3, $4, $5, $6)
+	` // $N is index of arguments passed to db.Exec() - prevent hardcoding values in SQL)
 
 	_, err := s.db.Query(
 		query,
@@ -89,7 +90,29 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
 	return nil
 }
 
-func (s *PostgresStore) UpdateAccount(*Account) error {
+func (s *PostgresStore) UpdateAccount(acc *Account) error {
+	query := `
+		UPDATE Account
+		SET first_name=$2, last_name=$3, number=$4, encrypted_password=$5, balance=$6, created_at=$7
+		WHERE id=$1
+	`
+
+	_, err := s.db.Query(
+		query,
+		acc.ID,
+		acc.FirstName,
+		acc.LastName,
+		acc.Number,
+		acc.EncryptedPassword,
+		acc.Balance,
+		acc.CreatedAt,
+	)
+
+	if err != nil {
+		return err
+	}
+	// fmt.Printf("%+v\n", r)
+
 	return nil
 }
 
