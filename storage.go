@@ -90,6 +90,11 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
 	return nil
 }
 
+func (s *PostgresStore) TransferToAccount(acc *Account) error {
+
+	return nil
+}
+
 func (s *PostgresStore) UpdateAccount(acc *Account) error {
 	query := `
 		UPDATE Account

@@ -33,7 +33,7 @@ func (s *APIServer) Run() { // use github.com/gorilla/mux (id say its a stable p
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
 
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandleFunc(s.handleGetAccountByID), s.store)) // wrap this with withJWTAuth to protect this
-	router.HandleFunc("/transfer", makeHTTPHandleFunc(s.handleTransfer))
+	router.HandleFunc("/account/{id}/transfer", makeHTTPHandleFunc(s.handleTransfer))
 
 	log.Printf("JSON API server running on%s", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
