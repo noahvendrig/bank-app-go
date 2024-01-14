@@ -25,15 +25,15 @@ func NewAPIServer(listenAddr string, store Storage) *APIServer {
 	}
 }
 
-func (s *APIServer) Run() { // use github.com/gorilla/mux (id say its a stable package, so we'll use it)
+func (s *APIServer) Run() { // use github.com/gorilla/mux (stable package, so i use it)
 	router := mux.NewRouter()
 
-	router.HandleFunc("/login", makeHTTPHandleFunc(s.handleLogin))
+	router.HandleFunc("/login", makeHTTPHandleFunc(s.handleLogin)) // use acc no. and pw to login, outputs the JWT token
 
-	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
+	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount)) // leave open for dev purposes (later wrap this up with some auth)
 
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandleFunc(s.handleGetAccountByID), s.store)) // wrap this with withJWTAuth to protect this
-	router.HandleFunc("/account/{id}/transfer", makeHTTPHandleFunc(s.handleTransfer))
+	router.HandleFunc("/account/{id}/transfer", withJWTAuth(makeHTTPHandleFunc(s.handleTransfer), s.store))
 
 	log.Printf("JSON API server running on%s", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
@@ -101,6 +101,8 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			return err
 		}
+
+		fmt.Println("id is: ", id)
 
 		account, err := s.store.GetAccountByID(id)
 		if err != nil {
@@ -173,12 +175,27 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
-	transferReq := new(TransferRequest)
-	if err := json.NewDecoder(r.Body).Decode(&transferReq); err != nil {
+	if r.Method != "POST" {
+		return fmt.Errorf("method not allowed: %s", r.Method)
+	}
+	number, err := getNumber(r)
+	if err != nil {
 		return err
 	}
 
-	defer r.Body.Close()
+	account, err := s.store.GetAccountByNumber(number)
+	if err != nil {
+		return err
+	}
+	fmt.Println("id is: ", account.ID)
+
+	transferReq := new(TransferRequest) // account to transfer to, and amount
+	if err := json.NewDecoder(r.Body).Decode(&transferReq); err != nil {
+		return err
+	}
+	fmt.Println(transferReq)
+
+	// defer r.Body.Close()
 
 	return WriteJSON(w, http.StatusOK, transferReq)
 }
@@ -192,6 +209,7 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	return json.NewEncoder(w).Encode(v)
 }
 
+// Delete for production
 // Windows
 // 		SET JWT_SECRET=noah1111
 
@@ -267,7 +285,7 @@ func validateJWT(tokenString string) (*jwt.Token, error) {
 
 		// Don't forget to validate the alg is what you expect:
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 
 		// hmacSampleSecret is a []byte containing your secret, e.g. []byte("my_secret_key")
@@ -297,4 +315,14 @@ func getID(r *http.Request) (int, error) {
 	}
 
 	return id, nil
+}
+
+func getNumber(r *http.Request) (int, error) {
+	numberStr := mux.Vars(r)["number"]
+	number, err := strconv.Atoi(numberStr)
+	if err != nil {
+		return number, fmt.Errorf("invalid id given: %s", numberStr) // return a user friendly error
+	}
+
+	return number, nil
 }

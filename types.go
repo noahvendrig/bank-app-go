@@ -18,8 +18,8 @@ type LoginRequest struct {
 }
 
 type TransferRequest struct {
-	ToAccount int `json:"toAccount"` // id to send $ to
-	Amount    int `json:"amount"`
+	ToAccountNumber int `json:"toAccountNumber"` // id to send $ to
+	Amount          int `json:"amount"`
 }
 
 type CreateAccountRequest struct {
