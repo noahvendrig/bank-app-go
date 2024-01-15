@@ -18,10 +18,17 @@ type Storage interface {
 	GetAccounts() ([]*Account, error)
 	GetAccountByNumber(int) (*Account, error)
 	GetAccountByID(int) (*Account, error)
+	TransferToAccount(toAcc *Account, fromAcc *Account, transferAmount int) error
 }
 
 type PostgresStore struct {
 	db *sql.DB
+}
+
+// UpdateAccount implements Storage.
+func (*PostgresStore) UpdateAccount(*Account) error {
+	// panic("unimplemented")
+	return nil
 }
 
 func NewPostgresStore() (*PostgresStore, error) {
@@ -90,33 +97,39 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
 	return nil
 }
 
-func (s *PostgresStore) TransferToAccount(acc *Account) error {
-
+func UpdateAccount(*Account) error {
 	return nil
 }
 
-func (s *PostgresStore) UpdateAccount(acc *Account) error {
+func UpdateAccountBalance(acc *Account, newBalance int64, s *PostgresStore) error {
 	query := `
 		UPDATE Account
-		SET first_name=$2, last_name=$3, number=$4, encrypted_password=$5, balance=$6, created_at=$7
+		SET balance=$2
 		WHERE id=$1
 	`
-
 	_, err := s.db.Query(
 		query,
 		acc.ID,
-		acc.FirstName,
-		acc.LastName,
-		acc.Number,
-		acc.EncryptedPassword,
-		acc.Balance,
-		acc.CreatedAt,
+		newBalance,
 	)
 
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("%+v\n", r)
+
+	return nil
+}
+
+func (s *PostgresStore) TransferToAccount(toAcc *Account, fromAcc *Account, transferAmount int) error {
+	err := UpdateAccountBalance(toAcc, toAcc.Balance+int64(transferAmount), s)
+	if err != nil {
+		return err
+	}
+
+	err = UpdateAccountBalance(fromAcc, fromAcc.Balance-int64(transferAmount), s)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

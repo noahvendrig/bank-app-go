@@ -178,30 +178,34 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 	if r.Method != "POST" {
 		return fmt.Errorf("method not allowed: %s", r.Method)
 	}
-	number, err := getNumber(r)
+
+	fromNumber, toNumber, amount, err := decodeTransfer(r)
 	if err != nil {
 		return err
 	}
 
-	account, err := s.store.GetAccountByNumber(number)
+	toAccount, err := s.store.GetAccountByNumber(toNumber)
 	if err != nil {
 		return err
 	}
-	fmt.Println("id is: ", account.ID)
 
-	transferReq := new(TransferRequest) // account to transfer to, and amount
-	if err := json.NewDecoder(r.Body).Decode(&transferReq); err != nil {
+	fromAccount, err := s.store.GetAccountByNumber(fromNumber)
+	if err != nil {
 		return err
 	}
-	fmt.Println(transferReq)
+	fmt.Println("id is: ", toAccount.ID)
+	fmt.Printf("Transferring: $%d to %s %s\n", amount, toAccount.FirstName, toAccount.LastName)
+
+	// transfer the money
+	err = s.store.TransferToAccount(toAccount, fromAccount, amount)
 
 	// defer r.Body.Close()
+	// show the new balance for the owners account (not the other persons acc)
 
-	return WriteJSON(w, http.StatusOK, transferReq)
+	return WriteJSON(w, http.StatusOK, "")
 }
 
 // Helper functions
-
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	w.Header().Add("Content-Type", "application/json") // write json correctly
 	w.WriteHeader(status)
@@ -317,12 +321,11 @@ func getID(r *http.Request) (int, error) {
 	return id, nil
 }
 
-func getNumber(r *http.Request) (int, error) {
-	numberStr := mux.Vars(r)["number"]
-	number, err := strconv.Atoi(numberStr)
-	if err != nil {
-		return number, fmt.Errorf("invalid id given: %s", numberStr) // return a user friendly error
+func decodeTransfer(r *http.Request) (int, int, int, error) {
+	var req TransferRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return -1, -1, -1, err
 	}
 
-	return number, nil
+	return req.FromAccountNumber, req.ToAccountNumber, req.Amount, nil
 }
