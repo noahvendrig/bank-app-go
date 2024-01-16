@@ -193,16 +193,24 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	fmt.Println("id is: ", toAccount.ID)
-	fmt.Printf("Transferring: $%d to %s %s\n", amount, toAccount.FirstName, toAccount.LastName)
 
 	// transfer the money
-	err = s.store.TransferToAccount(toAccount, fromAccount, amount)
+	acc, err := s.store.TransferToAccount(toAccount, fromAccount, amount)
+	if err != nil {
+		return err
+	}
 
-	// defer r.Body.Close()
+	if err != nil {
+		return err
+	}
 	// show the new balance for the owners account (not the other persons acc)
+	transferResponse := TransferResponse{
+		Number:  acc.Number,
+		Balance: acc.Balance,
+	}
+	fmt.Printf("Transferring: $%d to %s %s\n", amount, toAccount.FirstName, toAccount.LastName)
 
-	return WriteJSON(w, http.StatusOK, "")
+	return WriteJSON(w, http.StatusOK, transferResponse)
 }
 
 // Helper functions

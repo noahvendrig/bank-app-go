@@ -18,7 +18,7 @@ type Storage interface {
 	GetAccounts() ([]*Account, error)
 	GetAccountByNumber(int) (*Account, error)
 	GetAccountByID(int) (*Account, error)
-	TransferToAccount(toAcc *Account, fromAcc *Account, transferAmount int) error
+	TransferToAccount(toAcc *Account, fromAcc *Account, transferAmount int) (*Account, error)
 }
 
 type PostgresStore struct {
@@ -101,37 +101,87 @@ func UpdateAccount(*Account) error {
 	return nil
 }
 
-func UpdateAccountBalance(acc *Account, newBalance int64, s *PostgresStore) error {
-	query := `
+func UpdateAccountBalance(acc *Account, amount int64, s *PostgresStore) (*Account, error) {
+
+	checkQuery := `
+		SELECT *
+		FROM Account
+		WHERE id=$1
+	`
+
+	rows, err := s.db.Query(
+		checkQuery,
+		acc.ID,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		_, err := scanIntoAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		// if amount < 0 && acc.Balance < -amount {
+		// 	return nil, fmt.Errorf("insufficient funds")
+		// }
+	}
+
+	transferQuery := `
 		UPDATE Account
 		SET balance=$2
 		WHERE id=$1
 	`
-	_, err := s.db.Query(
-		query,
+	_, err = s.db.Query(
+		transferQuery,
 		acc.ID,
-		newBalance,
+		acc.Balance+amount,
 	)
 
 	if err != nil {
-		return err
+		return nil, err
+	}
+	//
+	getAccQuery := `
+		SELECT *
+		FROM Account
+		WHERE id=$1
+	`
+
+	rows, err = s.db.Query(
+		getAccQuery,
+		acc.ID,
+	)
+
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	for rows.Next() {
+		updatedAcc, err := scanIntoAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+		return updatedAcc, err
+	}
+
+	return nil, err
 }
 
-func (s *PostgresStore) TransferToAccount(toAcc *Account, fromAcc *Account, transferAmount int) error {
-	err := UpdateAccountBalance(toAcc, toAcc.Balance+int64(transferAmount), s)
+func (s *PostgresStore) TransferToAccount(toAcc *Account, fromAcc *Account, transferAmount int) (*Account, error) {
+	_, err := UpdateAccountBalance(toAcc, int64(transferAmount), s)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = UpdateAccountBalance(fromAcc, fromAcc.Balance-int64(transferAmount), s)
+	newFromAcc, err := UpdateAccountBalance(fromAcc, -int64(transferAmount), s) // remove the balance, instead of add it
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return newFromAcc, nil
 }
 
 func (s *PostgresStore) DeleteAccount(id int) error {
