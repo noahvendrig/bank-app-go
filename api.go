@@ -159,9 +159,11 @@ func (s *APIServer) handleUpdateAccount(w http.ResponseWriter, r *http.Request) 
 
 	updatedAccount := &Account{ // set to pointer to this account to abide by s.store.UpdateAccount() params
 		ID:        oldAccount.ID,
+		Number:    oldAccount.Number,
 		FirstName: newAccount.FirstName,
 		LastName:  newAccount.LastName,
 		Balance:   newAccount.Balance,
+		CreatedAt: oldAccount.CreatedAt,
 	}
 
 	if err := s.store.UpdateAccount(updatedAccount); err != nil {
