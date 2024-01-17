@@ -34,6 +34,7 @@ func (s *APIServer) Run() { // use github.com/gorilla/mux (stable package, so i 
 
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandleFunc(s.handleGetAccountByID), s.store)) // wrap this with withJWTAuth to protect this
 	router.HandleFunc("/account/{id}/transfer", withJWTAuth(makeHTTPHandleFunc(s.handleTransfer), s.store))
+	router.HandleFunc("/account/{id}/update", withJWTAuth(makeHTTPHandleFunc(s.handleUpdateAccount), s.store))
 
 	log.Printf("JSON API server running on%s", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
@@ -102,8 +103,6 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 			return err
 		}
 
-		fmt.Println("id is: ", id)
-
 		account, err := s.store.GetAccountByID(id)
 		if err != nil {
 			return err
@@ -148,16 +147,28 @@ func (s *APIServer) handleUpdateAccount(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 
-	account, err := s.store.GetAccountByID(id)
+	oldAccount, err := s.store.GetAccountByID(id)
 	if err != nil {
 		return err
 	}
 
-	if err := s.store.UpdateAccount(account); err != nil {
+	var newAccount Account
+	if err := json.NewDecoder(r.Body).Decode(&newAccount); err != nil {
 		return err
 	}
 
-	return WriteJSON(w, http.StatusOK, account)
+	updatedAccount := &Account{ // set to pointer to this account to abide by s.store.UpdateAccount() params
+		ID:        oldAccount.ID,
+		FirstName: newAccount.FirstName,
+		LastName:  newAccount.LastName,
+		Balance:   newAccount.Balance,
+	}
+
+	if err := s.store.UpdateAccount(updatedAccount); err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, updatedAccount)
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
@@ -179,7 +190,12 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 		return fmt.Errorf("method not allowed: %s", r.Method)
 	}
 
-	fromNumber, toNumber, amount, err := decodeTransfer(r)
+	fromId, err := getID(r)
+	if err != nil {
+		return err
+	}
+
+	toNumber, amount, err := decodeTransfer(r)
 	if err != nil {
 		return err
 	}
@@ -189,7 +205,7 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 
-	fromAccount, err := s.store.GetAccountByNumber(fromNumber)
+	fromAccount, err := s.store.GetAccountByID(fromId)
 	if err != nil {
 		return err
 	}
@@ -329,11 +345,11 @@ func getID(r *http.Request) (int, error) {
 	return id, nil
 }
 
-func decodeTransfer(r *http.Request) (int, int, int, error) {
+func decodeTransfer(r *http.Request) (int, int, error) {
 	var req TransferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return -1, -1, -1, err
+		return -1, -1, err
 	}
 
-	return req.FromAccountNumber, req.ToAccountNumber, req.Amount, nil
+	return req.ToAccountNumber, req.Amount, nil
 }

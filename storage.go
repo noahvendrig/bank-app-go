@@ -14,7 +14,7 @@ import (
 type Storage interface {
 	CreateAccount(*Account) error
 	DeleteAccount(int) error
-	UpdateAccount(*Account) error
+	UpdateAccount(updateRequest *Account) error
 	GetAccounts() ([]*Account, error)
 	GetAccountByNumber(int) (*Account, error)
 	GetAccountByID(int) (*Account, error)
@@ -23,12 +23,6 @@ type Storage interface {
 
 type PostgresStore struct {
 	db *sql.DB
-}
-
-// UpdateAccount implements Storage.
-func (*PostgresStore) UpdateAccount(*Account) error {
-	// panic("unimplemented")
-	return nil
 }
 
 func NewPostgresStore() (*PostgresStore, error) {
@@ -45,7 +39,6 @@ func NewPostgresStore() (*PostgresStore, error) {
 	return &PostgresStore{
 		db: db,
 	}, nil
-
 }
 
 func (s PostgresStore) Init() error {
@@ -92,17 +85,38 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("%+v\n", r)
 
 	return nil
 }
 
-func UpdateAccount(*Account) error {
+func (s *PostgresStore) UpdateAccount(updatedAccount *Account) error {
+	// Check if the account exists
+	existingAccount, err := s.GetAccountByID(updatedAccount.ID)
+	if err != nil {
+		return fmt.Errorf("failed to find account with ID %d: %v", updatedAccount.ID, err)
+	}
+
+	updateQuery := `
+		UPDATE Account
+		SET first_name=$2, last_name=$3, balance=$4
+		WHERE id=$1
+	`
+	_, err = s.db.Exec(
+		updateQuery,
+		existingAccount.ID,
+		updatedAccount.FirstName,
+		updatedAccount.LastName,
+		updatedAccount.Balance,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update account with ID %d: %v", existingAccount.ID, err)
+	}
+
 	return nil
 }
 
 func UpdateAccountBalance(acc *Account, amount int64, s *PostgresStore) (*Account, error) {
-
 	checkQuery := `
 		SELECT *
 		FROM Account
@@ -124,9 +138,9 @@ func UpdateAccountBalance(acc *Account, amount int64, s *PostgresStore) (*Accoun
 			return nil, err
 		}
 
-		// if amount < 0 && acc.Balance < -amount {
-		// 	return nil, fmt.Errorf("insufficient funds")
-		// }
+		if amount < 0 && acc.Balance < -amount {
+			return nil, fmt.Errorf("insufficient funds")
+		}
 	}
 
 	transferQuery := `
@@ -143,7 +157,7 @@ func UpdateAccountBalance(acc *Account, amount int64, s *PostgresStore) (*Accoun
 	if err != nil {
 		return nil, err
 	}
-	//
+
 	getAccQuery := `
 		SELECT *
 		FROM Account
